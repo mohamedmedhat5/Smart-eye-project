@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Eye AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #00ff88;
+            --bg-color: #121212;
+            --panel-bg: #1e1e1e;
+            --text-color: #ffffff;
+            --accent-color: #00bcd4;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: var(--panel-bg);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #333;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-badge {
+            background-color: #ff4444;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .status-badge.online {
+            background-color: var(--primary-color);
+            color: black;
+            box-shadow: 0 0 10px var(--primary-color);
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            padding: 20px;
+            gap: 20px;
+            height: calc(100vh - 80px);
+        }
+
+        .video-section {
+            flex: 3;
+            background: #000;
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        video, canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .sidebar {
+            flex: 1;
+            background-color: var(--panel-bg);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #333;
+        }
+
+        .panel-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--accent-color);
+            margin-bottom: 15px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+            background-color: #333;
+            color: white;
+        }
+
+        button:hover { background-color: #444; }
+        
+        button.active {
+            background-color: var(--accent-color);
+            color: black;
+        }
+
+        .logs-container {
+            flex: 1;
+            overflow-y: auto;
+            background: #121212;
+            border-radius: 6px;
+            padding: 10px;
+            border: 1px solid #333;
+        }
+
+        .log-item {
+            padding: 8px;
+            border-bottom: 1px solid #222;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            color: #ccc;
+        }
+
+        .log-item span { color: var(--primary-color); font-weight: bold; }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #121212; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">
+            Smart Eye AI
+        </div>
+        <div id="connectionStatus" class="status-badge">Offline</div>
+    </header>
+
+    <div class="main-container">
+        <div class="video-section">
+            <div class="video-wrapper">
+                <video id="video" autoplay playsinline muted></video>
+                <canvas id="canvas"></canvas>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="panel-title">System Controls</div>
+            <div class="controls">
+                <button id="toggleVoice" class="active" onclick="toggleMute()">Voice: ON</button>
+                <button onclick="clearLogs()">Clear Logs</button>
+            </div>
+
+            <div class="panel-title">Live Detections</div>
+            <div class="logs-container" id="logs">
+                <div class="log-item" style="text-align: center; color: #555;">Waiting for detections...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statusBadge = document.getElementById('connectionStatus');
+        const logsContainer = document.getElementById('logs');
+        const voiceBtn = document.getElementById('toggleVoice');
+        
+        const ws = new WebSocket("ws://localhost:8000/ws");
+        
+        let lastSpeakTime = 0;
+        let isMuted = false;
+
+        ws.onopen = () => {
+            statusBadge.innerText = "System Online";
+            statusBadge.classList.add('online');
+            startCamera();
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            drawDetections(data.detections);
+            handleSpeech(data.detections);
+            updateLogs(data.detections);
+        };
+
+        ws.onclose = () => {
+            statusBadge.innerText = "Disconnected";
+            statusBadge.classList.remove('online');
+        };
+
+        function startCamera() {
+            navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+                .then((stream) => {
+                    video.srcObject = stream;
+                    video.play();
+                    setInterval(sendFrame, 100); 
+                })
+                .catch(err => alert("Camera Error: " + err));
+        }
+
+        function sendFrame() {
+            if (ws.readyState === WebSocket.OPEN) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                ws.send(canvas.toDataURL("image/jpeg", 0.5));
+            }
+        }
+
+        function drawDetections(detections) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            detections.forEach(det => {
+                const [x1, y1, x2, y2] = det.box;
+                
+                ctx.strokeStyle = "#00ff88";
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+                
+                ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+                const text = `${det.label} ${(det.score * 100).toFixed(0)}%`;
+                const textWidth = ctx.measureText(text).width;
+                ctx.fillRect(x1, y1 - 25, textWidth + 10, 25);
+
+                ctx.fillStyle = "#00ff88";
+                ctx.font = "bold 16px Roboto";
+                ctx.fillText(text, x1 + 5, y1 - 7);
+            });
+        }
+
+        function handleSpeech(detections) {
+            if (isMuted || detections.length === 0) return;
+
+            const now = Date.now();
+            if (now - lastSpeakTime > 4000) { 
+                const labels = detections.map(d => d.label);
+                const uniqueLabels = [...new Set(labels)];
+                const text = "Detected " + uniqueLabels.join(" and ");
+                
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = 1.1;
+                window.speechSynthesis.speak(utterance);
+                lastSpeakTime = now;
+            }
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            if(isMuted) {
+                voiceBtn.innerText = "Voice: OFF";
+                voiceBtn.classList.remove('active');
+                window.speechSynthesis.cancel();
+            } else {
+                voiceBtn.innerText = "Voice: ON";
+                voiceBtn.classList.add('active');
+            }
+        }
+
+        function updateLogs(detections) {
+            if (detections.length === 0) return;
+
+            detections.forEach(det => {
+                const time = new Date().toLocaleTimeString();
+                const logEntry = document.createElement('div');
+                logEntry.className = 'log-item';
+                logEntry.innerHTML = `<div>Found <span>${det.label}</span></div> <div>${time}</div>`;
+                
+                logsContainer.prepend(logEntry);
+            });
+
+            if (logsContainer.children.length > 50) {
+                logsContainer.removeChild(logsContainer.lastChild);
+            }
+        }
+
+        function clearLogs() {
+            logsContainer.innerHTML = '<div class="log-item" style="text-align: center; color: #555;">Logs cleared</div>';
+        }
+    </script>
+</body>
+</html>
