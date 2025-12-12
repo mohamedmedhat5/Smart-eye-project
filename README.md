@@ -38,7 +38,7 @@ We selected the **YOLOv8 Small (yolov8s)** architecture based on **PyTorch**.
 We conducted custom training experiments to optimize performance.
 * **Environment:** Local GPU (NVIDIA CUDA).
 * **Epochs:** 50.
-* **Batch Size:** 8.
+* **Batch Size:** 16.
 * **Optimizer:** AdamW.
 * **Results:**
     * **mAP50:** 94.3% (High Accuracy).
@@ -103,4 +103,5 @@ We implemented a modern, user-friendly interface:
 * `eval.py`: Analytics dashboard (Streamlit).
 * `run_project.bat`: Launcher script.
 * `project_results/`: Contains training evidence (Charts, Weights).
+
 * `models/`: Contains the trained models (`best.pt`).
